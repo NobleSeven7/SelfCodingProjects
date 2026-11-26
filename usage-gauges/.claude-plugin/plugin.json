@@ -1,7 +1,7 @@
 {
   "name": "usage-gauges",
-  "version": "0.3.2",
-  "description": "Shows Context, 5-hour and weekly usage plus the prompt cache hit rate as colored rings in a row above the prompt.",
+  "version": "0.4.3",
+  "description": "Shows Context, 5-hour and weekly usage plus the prompt cache hit rate as colored rings above the prompt, with a live cache countdown, plus /enhance to rewrite a rough draft into a clearer prompt.",
   "types": "./types/index.d.ts",
   "license": "MIT"
 }

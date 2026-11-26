@@ -20,6 +20,15 @@ export type CacheReading = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-gauges': { usage: Usage | null; cache: CacheReading | null }
+    'usage-gauges': {
+      usage: Usage | null
+      cache: CacheReading | null
+      /** A ✨ rewrite is running. */
+      enhanceBusy: boolean
+      /** The draft before the last rewrite, for Undo; null when there's nothing to undo. */
+      enhanceUndo: string | null
+      /** Which spinner frame ✨ shows while busy. */
+      spinFrame: number
+    }
   }
 }

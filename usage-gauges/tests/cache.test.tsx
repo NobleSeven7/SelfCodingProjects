@@ -47,18 +47,18 @@ test('the row shows the cache gauge, warm and cold, on every surface', async ($,
 
   for (const surface of ['desktop', 'terminal'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface } as never)
-    expect((await ui.find({ type: 'Text', text: /Prompt Cache 96% \(warm\)/ }))?.text).toContain('Prompt Cache 96% (warm)')
-    expect(await ui.find({ type: 'Text', text: /Cont\. Window --%/ })).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /Cache 96% \(warm · 5m\)/ }))?.text).toContain('Cache 96% (warm · 5m)')
+    expect(await ui.find({ type: 'Text', text: /Context --%/ })).toBeTruthy()
     await ui.unmount()
   }
 
   cache = { percent: 96, lastAt: now - 600_000, ttlMs: 300_000 }
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' } as never)
-  expect((await ui.find({ type: 'Text', text: /Prompt Cache 96% \(cold\)/ }))?.text).toContain('Prompt Cache 96% (cold)')
+  expect((await ui.find({ type: 'Text', text: /Cache 96% \(cold\)/ }))?.text).toContain('Cache 96% (cold)')
   await ui.unmount()
 
   cache = null
   const empty = await $.ui.mount({ ...BAND, surface: 'desktop' } as never)
-  expect(await empty.find({ type: 'Text', text: /Prompt Cache --%/ })).toBeTruthy()
+  expect(await empty.find({ type: 'Text', text: /Cache --%/ })).toBeTruthy()
   await empty.unmount()
 })

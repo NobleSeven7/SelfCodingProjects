@@ -10,14 +10,18 @@ A Claude Code mod that shows how much of your limits you've used, in a row above
 
 ![The usage-gauges row above the prompt in the Claude desktop app: Cont. Window 9%, 5-Hour Limit 18%, Week Limit 63%, Prompt Cache 67% (warm), with tools: 0 in the status bar](docs/usage-gauges.png)
 
-- **Cont. Window**: how full the context window is (left)
-- **5-Hour Limit**: your 5-hour usage, with time until it resets
-- **Week Limit**: your weekly usage, with time until it resets
-- **Prompt Cache**: how much of the last reply's input came from the prompt cache, and whether the cache is still `(warm)` or has gone `(cold)` (right)
+- **Context**: how full the context window is (left)
+- **5-Hour**: your 5-hour usage, with time until it resets
+- **Weekly**: your weekly usage, with time until it resets
+- **Cache**: how much of the last reply's input came from the prompt cache, and whether the cache is still `(warm)` or has gone `(cold)` (right)
 
-Each one is a progress ring. The usage gauges are green under 50%, yellow from 50% to 79%, and red at 80% or more. Prompt Cache is the other way round, since a high hit rate is good: green at 80% or more while warm, yellow from 50% to 79%, red under 50% or when cold. Before the first reply of a session they show `--%`.
+Each one is a progress ring. The usage gauges are green under 50%, yellow from 50% to 79%, and red at 80% or more. Cache is the other way round, since a high hit rate is good: green at 80% or more while warm, yellow from 50% to 79%, red under 50% or when cold. Before the first reply of a session they show `--%`.
 
 The cache hit rate is `cache_read / (cache_read + input + cache_creation)` from each reply's token counts. Warm or cold is worked out from the time since the last reply against the cache's lifetime (5 minutes, or 1 hour when it was written that way).
+
+While the cache is warm, Cache counts down to when it goes cold, like `(warm · 54m)`, updating every 20 seconds. It counts from the last reply, over 1 hour on a Claude subscription or 5 minutes with an API key (or whatever lifetime the last reply's cache writes showed). At 0 it switches to `(cold)` and turns red.
+
+**/enhance:** type `/enhance <your rough draft>` and it's rewritten into a clear, structured prompt, using Haiku, and put in your prompt box, ready to edit or send. It keeps your intent and every detail you gave and adds nothing you didn't. While it works, a dim `◐ Enhancing…` shows at the left of the gauge row; afterwards a small **↶ Undo** sits there until you send a prompt, and `/enhance undo` does the same.
 
 It also puts a running tool-call count (`tools: N`) in the status bar: one total shared by all your sessions, kept in `plugins/data/usage-gauges-shared/tool-count.json` in your Claude config folder.
 
