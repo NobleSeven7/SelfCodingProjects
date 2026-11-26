@@ -4,9 +4,9 @@ import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, 
 import type { CacheReading, Gauge, Usage } from '../types'
 
 // A row above the prompt with four gauges:
-//   Cont. Window 15% | 5-Hour Limit 6% (4h 38m) | Week Limit 61% (2d 8h) | Prompt Cache 96% (warm)
+//   Context 15% | 5-Hour 6% (4h 38m) | Weekly 61% (2d 8h) | Cache 96% (warm · 54m)
 // Usage gauges: green under 50%, yellow 50-79%, red 80%+ (high is bad).
-// Prompt Cache is inverted (high is good): green 80%+ and warm, yellow 50-79%,
+// Cache is inverted (high is good): green 80%+ and warm, yellow 50-79%,
 // red under 50% or cold.
 // Missing values (a fresh session, before the first reply) show dim as "--%".
 
