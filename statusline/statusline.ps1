@@ -1,5 +1,5 @@
 # Claude Code status line
-# Output: Model | wheel Ctx 68% | wheel 5h 18% (2h 14m) | wheel 7d 42% (4d 6h)
+# Output: Model | wheel Ctx 68% | wheel 5h 18% (2h 14m) | wheel 7d 42% (4d 6h) | wheel Cache 96% (warm)
 # Reads the session JSON from stdin. Missing values show as "--%".
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -55,7 +55,7 @@ function Format-Gauge([string]$label, $rawPct, $resetsAt) {
         return "$dim$wheelEmpty $label --%$reset"
     }
 
-    $pct = [int][math]::Floor([math]::Min(100, [math]::Max(0, $value)) + 0.5)
+    $pct = [int][math]::Floor([math]::Min([double]100.0, [math]::Max([double]0.0, $value)) + 0.5)
 
     if     ($pct -eq 0)  { $wheel = $wheelEmpty }
     elseif ($pct -le 25) { $wheel = $wheelQ1 }
@@ -76,6 +76,64 @@ function Format-Gauge([string]$label, $rawPct, $resetsAt) {
     return "$esc[$($color)m$wheel$reset $label $esc[$($color)m$pct%$reset$resetText"
 }
 
+# Prompt cache: hit rate and warm/cold. Uses prompt_cache.hit_ratio (0-1) and
+# prompt_cache.warm when Claude Code sends them; otherwise works it out from
+# context_window.current_usage:
+#   cache_read / (cache_read + input + cache_creation)
+# and calls the cache warm while the transcript was written less than the
+# cache lifetime ago (1 hour if the last reply wrote 1-hour entries, else 5 min).
+# Colors are inverted, since a high hit rate is good:
+#   green 80%+ and warm, yellow 50-79%, red under 50% or cold.
+function Format-Cache($data) {
+    $ratio = Get-Prop $data @('prompt_cache', 'hit_ratio')
+    $warm  = Get-Prop $data @('prompt_cache', 'warm')
+    $pct = $null
+
+    if ($null -ne $ratio -and $null -ne ($ratio -as [double])) {
+        $pct = [int][math]::Floor([math]::Min([double]1.0, [math]::Max([double]0.0, ($ratio -as [double]))) * 100 + 0.5)
+    } else {
+        $usage = Get-Prop $data @('context_window', 'current_usage')
+        if ($null -ne $usage) {
+            $read  = (Get-Prop $usage @('cache_read_input_tokens')) -as [double]
+            $input = (Get-Prop $usage @('input_tokens')) -as [double]
+            $write = (Get-Prop $usage @('cache_creation_input_tokens')) -as [double]
+            if ($null -eq $read)  { $read = 0 }
+            if ($null -eq $input) { $input = 0 }
+            if ($null -eq $write) { $write = 0 }
+            $total = $read + $input + $write
+            if ($total -gt 0) { $pct = [int][math]::Floor($read / $total * 100 + 0.5) }
+
+            if ($null -eq $warm) {
+                $oneHour = (Get-Prop $usage @('cache_creation', 'ephemeral_1h_input_tokens')) -as [double]
+                $ttlSecs = if ($oneHour -gt 0) { 3600 } else { 300 }
+                $transcript = Get-Prop $data @('transcript_path')
+                if ($transcript -and (Test-Path -LiteralPath $transcript)) {
+                    $age = ((Get-Date) - (Get-Item -LiteralPath $transcript).LastWriteTime).TotalSeconds
+                    $warm = $age -lt $ttlSecs
+                } else {
+                    $warm = $true
+                }
+            }
+        }
+    }
+
+    if ($null -eq $pct) { return "$dim$wheelEmpty Cache --%$reset" }
+    $isWarm = [bool]$warm
+
+    if     ($pct -eq 0)  { $wheel = $wheelEmpty }
+    elseif ($pct -le 25) { $wheel = $wheelQ1 }
+    elseif ($pct -le 50) { $wheel = $wheelHalf }
+    elseif ($pct -le 85) { $wheel = $wheelQ3 }
+    else                 { $wheel = $wheelFull }
+
+    if     (-not $isWarm -or $pct -lt 50) { $color = '31' }   # red
+    elseif ($pct -lt 80)                  { $color = '33' }   # yellow
+    else                                  { $color = '32' }   # green
+
+    $tag = if ($isWarm) { 'warm' } else { 'cold' }
+    return "$esc[$($color)m$wheel$reset Cache $esc[$($color)m$pct%$reset ($tag)"
+}
+
 $model = Get-Prop $data @('model', 'display_name')
 if (-not $model) { $model = Get-Prop $data @('model', 'id') }
 if (-not $model) { $model = 'Claude' }
@@ -84,4 +142,6 @@ $ctx   = Format-Gauge 'Ctx' (Get-Prop $data @('context_window', 'used_percentage
 $five  = Format-Gauge '5h'  (Get-Prop $data @('rate_limits', 'five_hour', 'used_percentage')) (Get-Prop $data @('rate_limits', 'five_hour', 'resets_at'))
 $seven = Format-Gauge '7d'  (Get-Prop $data @('rate_limits', 'seven_day', 'used_percentage')) (Get-Prop $data @('rate_limits', 'seven_day', 'resets_at'))
 
-Write-Output "$model | $ctx | $five | $seven"
+$cache = Format-Cache $data
+
+Write-Output "$model | $ctx | $five | $seven | $cache"

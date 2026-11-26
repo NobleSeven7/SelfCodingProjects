@@ -44,12 +44,13 @@ In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt 
 [`statusline/statusline.ps1`](statusline/statusline.ps1) is a Claude Code status line for the **terminal** (the desktop app doesn't run status line scripts; use the usage-gauges mod there). It shows:
 
 ```
-Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h)
+Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (warm)
 ```
 
 - A pie wheel for each: `○` 0%, `◔` 1–25%, `◑` 26–50%, `◕` 51–85%, `●` 86–100%
 - Wheel and percentage colored green under 50%, yellow 50–79%, red 80% and up
 - Time left until the 5-hour and weekly limits reset
+- Prompt cache hit rate with `(warm)` or `(cold)`, colored the other way round since high is good: green at 80%+ and warm, yellow 50–79%, red under 50% or cold. It uses `prompt_cache` when Claude Code sends it, otherwise `cache_read / (cache_read + input + cache_creation)` from `context_window.current_usage`, and calls the cache cold once the transcript hasn't changed for longer than the cache lifetime (5 minutes, or 1 hour)
 - `○ --%` when a value isn't known yet (a new session, before the first reply)
 
 #### Set up
