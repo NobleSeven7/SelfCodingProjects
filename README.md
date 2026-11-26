@@ -9,10 +9,13 @@ Just creating things using Claude Code (or any other agents if I get access to t
 A Claude Code mod that shows how much of your limits you've used, in a row above the prompt:
 
 - **Cont. Window**: how full the context window is (left)
-- **5-Hour Limit**: your 5-hour usage, with time until it resets (centre)
-- **Week Limit**: your weekly usage, with time until it resets (right)
+- **5-Hour Limit**: your 5-hour usage, with time until it resets
+- **Week Limit**: your weekly usage, with time until it resets
+- **Prompt Cache**: how much of the last reply's input came from the prompt cache, and whether the cache is still `(warm)` or has gone `(cold)` (right)
 
-Each one is a progress ring, colored green under 50%, yellow from 50% to 79%, and red at 80% or more. Before the first reply of a session they show `--%`.
+Each one is a progress ring. The usage gauges are green under 50%, yellow from 50% to 79%, and red at 80% or more. Prompt Cache is the other way round, since a high hit rate is good: green at 80% or more while warm, yellow from 50% to 79%, red under 50% or when cold. Before the first reply of a session they show `--%`.
+
+The cache hit rate is `cache_read / (cache_read + input + cache_creation)` from each reply's token counts. Warm or cold is worked out from the time since the last reply against the cache's lifetime (5 minutes, or 1 hour when it was written that way).
 
 It also puts a running tool-call count (`tools: N`) in the status bar, saved across sessions.
 

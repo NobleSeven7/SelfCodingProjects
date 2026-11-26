@@ -1,13 +1,17 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, SessionContextUsage, SessionRateLimit } from 'claude-code'
+import type { Register, SessionContextUsage, SessionRateLimit, TurnUsage } from 'claude-code'
 
-import type { Gauge, Usage } from '../types'
+import type { CacheReading, Gauge, Usage } from '../types'
 
-// A row above the prompt:  ◕ Ctx 68%  |  ◔ 5h 18% (2h 14m)  |  ◑ 7d 42% (4d 6h)
-// Wheel and percentage are colored: green under 50%, yellow 50-79%, red 80%+.
-// Missing values (a fresh session, before the first reply) show dim as "○ Ctx --%".
+// A row above the prompt with four gauges:
+//   Cont. Window 15% | 5-Hour Limit 6% (4h 38m) | Week Limit 61% (2d 8h) | Prompt Cache 96% (warm)
+// Usage gauges: green under 50%, yellow 50-79%, red 80%+ (high is bad).
+// Prompt Cache is inverted (high is good): green 80%+ and warm, yellow 50-79%,
+// red under 50% or cold.
+// Missing values (a fresh session, before the first reply) show dim as "--%".
 
 const usage = atom({ plugin: 'usage-gauges', key: 'usage' } as const, null)
+const cache = atom({ plugin: 'usage-gauges', key: 'cache' } as const, null)
 
 function wheel(pct: number): string {
   if (pct <= 0) return '○'
@@ -23,17 +27,25 @@ const YELLOW = '#e5b143'
 const RED = '#e5534b'
 const TRACK = 'rgba(255,255,255,0.18)'
 
-function color(pct: number): string {
+/** For usage against a limit: more is worse. */
+function usageColor(pct: number): string {
   if (pct < 50) return GREEN
   if (pct < 80) return YELLOW
   return RED
+}
+
+/** For the prompt cache hit rate: more is better, and a cold cache is red. */
+function cacheColor(pct: number, isWarm: boolean): string {
+  if (!isWarm || pct < 50) return RED
+  if (pct < 80) return YELLOW
+  return GREEN
 }
 
 // A progress ring in the style of the app's own: a faint full circle with a
 // colored arc from 12 o'clock, clockwise. pct null draws the track alone.
 const RING_PX = 18
 
-function ring(pct: number | null): string {
+function ring(pct: number | null, stroke: string): string {
   const r = 6.5
   const circ = 2 * Math.PI * r
   const track = `<circle cx="9" cy="9" r="${r}" fill="none" stroke="${TRACK}" stroke-width="2.5"/>`
@@ -42,8 +54,8 @@ function ring(pct: number | null): string {
   }
   const arc =
     pct >= 100
-      ? `<circle cx="9" cy="9" r="${r}" fill="none" stroke="${color(pct)}" stroke-width="2.5"/>`
-      : `<circle cx="9" cy="9" r="${r}" fill="none" stroke="${color(pct)}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="${((circ * pct) / 100).toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 9 9)"/>`
+      ? `<circle cx="9" cy="9" r="${r}" fill="none" stroke="${stroke}" stroke-width="2.5"/>`
+      : `<circle cx="9" cy="9" r="${r}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="${((circ * pct) / 100).toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 9 9)"/>`
   return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">${track}${arc}</svg>`
 }
 
@@ -77,6 +89,30 @@ function snapshot(context: SessionContextUsage | undefined, limits: SessionRateL
   }
 }
 
+// Prompt cache. Mods are not handed a `prompt_cache` object, so the hit rate is
+// worked out from each main-thread reply's token counts:
+//   cache_read / (cache_read + input + cache_creation)
+// The cache entry lives 5 minutes (or 1 hour when written that way) after it
+// was last used; past that it is cold.
+const FIVE_MIN = 5 * 60_000
+const ONE_HOUR = 60 * 60_000
+
+export function cacheReading(u: TurnUsage, now: number, prevTtlMs: number | undefined): CacheReading | null {
+  const read = u.cache_read_input_tokens || 0
+  const total = read + (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0)
+  if (total <= 0) return null
+  // Which lifetime the cache is written with: from this reply's writes when it
+  // made any, else what an earlier reply showed, else 5 minutes.
+  let ttlMs = prevTtlMs ?? FIVE_MIN
+  if ((u.ephemeral_1h_input_tokens ?? 0) > 0) ttlMs = ONE_HOUR
+  else if ((u.ephemeral_5m_input_tokens ?? 0) > 0) ttlMs = FIVE_MIN
+  return { percent: Math.round((read / total) * 100), lastAt: now, ttlMs }
+}
+
+export function isWarm(c: CacheReading, now: number): boolean {
+  return now - c.lastAt < c.ttlMs
+}
+
 // Tool-call count for the bottom status bar ("tools: N"). Saved in the mod's
 // store so it keeps counting across sessions and reloads. Loaded once, then
 // kept in memory so tool calls that run at the same time each add exactly 1.
@@ -90,6 +126,16 @@ function loadCount($: { store: { get: (key: string) => Promise<unknown> } }): Pr
     return toolCalls
   })
   return countLoaded
+}
+
+/** One gauge as the row draws it. */
+type Item = {
+  key: string
+  label: string
+  percent: number | null
+  color: string
+  /** Dim text after the percentage: a reset countdown, or (warm)/(cold). */
+  suffix: string
 }
 
 export const register: Register = on => {
@@ -111,7 +157,7 @@ export const register: Register = on => {
     } catch {
       await update($, usage, () => snapshot(undefined, []))
     }
-    // Redraw once a minute so the countdowns stay current between replies.
+    // Redraw once a minute so the countdowns and warm/cold stay current.
     $.clock.every(60_000, () => update($, usage, prev => (prev ? { ...prev, at: Date.now() } : prev)))
     return result
   })
@@ -121,9 +167,45 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // Each reply of the main conversation (not a subagent's) updates the cache gauge.
+  // turn.step streams, so its hook is an async generator: pass every chunk on
+  // untouched, then read the finished reply's token counts.
+  on('turn.step', async function* ($, e, next) {
+    const result = yield* next(e)
+    if (!e.agentId && result.usage) {
+      const reply = result.usage
+      await update($, cache, prev => cacheReading(reply, Date.now(), prev?.ttlMs) ?? prev).catch(() => undefined)
+    }
+    return result
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const u = (await read($, usage)) ?? snapshot(undefined, [])
+    const c = await read($, cache)
+    const now = Math.max(u.at, Date.now())
+
+    const limit = (key: string, label: string, g: Gauge, showReset: boolean): Item => ({
+      key,
+      label,
+      percent: g.percent,
+      color: g.percent === null ? TRACK : usageColor(g.percent),
+      suffix: showReset ? remaining(g.resetsAt, now) : '',
+    })
+    const warm = c ? isWarm(c, now) : false
+    const items: Item[] = [
+      limit('ctx', 'Cont. Window', u.ctx, false),
+      limit('five', '5-Hour Limit', u.five, true),
+      limit('seven', 'Week Limit', u.seven, true),
+      {
+        key: 'cache',
+        label: 'Prompt Cache',
+        percent: c ? c.percent : null,
+        color: c ? cacheColor(c.percent, warm) : TRACK,
+        suffix: c ? (warm ? ' (warm)' : ' (cold)') : '',
+      },
+    ]
+
     const ui = $.ui.resolve(e)
     const { Box, Text } = ui
 
@@ -131,81 +213,61 @@ export const register: Register = on => {
     // keeps the text wheels.
     if ('Svg' in ui) {
       const { Svg } = ui
-      // Three equal columns: left, centre, right.
-      const gauge = (
-        key: string,
-        label: string,
-        g: Gauge,
-        showReset: boolean,
-        justify: 'flex-start' | 'center' | 'flex-end',
-      ) => (
-        <Box
-          key={key}
-          width="33%"
-          flexGrow={1}
-          flexDirection="row"
-          alignItems="center"
-          justifyContent={justify}
-          gap="sm"
-        >
-          <Svg
-            source={ring(g.percent)}
-            alt={g.percent === null ? `${label} usage unknown` : `${label} ${g.percent}% used`}
-            width={RING_PX}
-            height={RING_PX}
-          />
-          {g.percent === null ? (
-            <Text dimColor>{`${label} --%`}</Text>
-          ) : (
-            <Text>
-              {`${label} `}
-              <Text color={color(g.percent)} bold>
-                {`${g.percent}%`}
-              </Text>
-              {showReset ? <Text dimColor>{remaining(g.resetsAt, u.at)}</Text> : null}
-            </Text>
-          )}
-        </Box>
-      )
+      // Four gauges spread edge to edge: first at the left, last at the right,
+      // equal space between, never wrapping onto a second line.
       return (
-        <Box width="100%" flexDirection="row" alignItems="center">
-          {gauge('ctx', 'Cont. Window', u.ctx, false, 'flex-start')}
-          {gauge('five', '5-Hour Limit', u.five, true, 'center')}
-          {gauge('seven', 'Week Limit', u.seven, true, 'flex-end')}
+        <Box width="100%" flexDirection="row" flexWrap="nowrap" alignItems="center" justifyContent="space-between" columnGap="md">
+          {items.map(it => (
+            <Box key={it.key} flexDirection="row" flexShrink={0} alignItems="center" gap="sm">
+              <Svg
+                source={ring(it.percent, it.color)}
+                alt={it.percent === null ? `${it.label} unknown` : `${it.label} ${it.percent}%`}
+                width={RING_PX}
+                height={RING_PX}
+              />
+              {it.percent === null ? (
+                <Text dimColor>{`${it.label} --%`}</Text>
+              ) : (
+                <Text>
+                  {`${it.label} `}
+                  <Text color={it.color} bold>
+                    {`${it.percent}%`}
+                  </Text>
+                  {it.suffix ? <Text dimColor>{it.suffix}</Text> : null}
+                </Text>
+              )}
+            </Box>
+          ))}
         </Box>
       )
     }
 
-    const cell = (key: string, label: string, g: Gauge, showReset: boolean) => {
-      if (g.percent === null) {
+    const cells = items.map((it, i) => {
+      const sep = i > 0 ? <Text dimColor>{'  |  '}</Text> : null
+      if (it.percent === null) {
         return (
-          <Text key={key} dimColor>
-            ○ {label} --%
+          <Text key={it.key}>
+            {sep}
+            <Text dimColor>{`○ ${it.label} --%`}</Text>
           </Text>
         )
       }
-      const c = color(g.percent)
       return (
-        <Text key={key}>
-          <Text color={c}>{wheel(g.percent)}</Text>
-          {` ${label} `}
-          <Text color={c} bold>
-            {`${g.percent}%`}
+        <Text key={it.key}>
+          {sep}
+          <Text color={it.color}>{wheel(it.percent)}</Text>
+          {` ${it.label} `}
+          <Text color={it.color} bold>
+            {`${it.percent}%`}
           </Text>
-          {showReset ? <Text dimColor>{remaining(g.resetsAt, u.at)}</Text> : null}
+          {it.suffix ? <Text dimColor>{it.suffix}</Text> : null}
         </Text>
       )
-    }
+    })
 
     return (
       <Box>
-        <Text>
-          {cell('ctx', 'Cont. Window', u.ctx, false)}
-          <Text dimColor>{'  |  '}</Text>
-          {cell('five', '5-Hour Limit', u.five, true)}
-          <Text dimColor>{'  |  '}</Text>
-          {cell('seven', 'Week Limit', u.seven, true)}
-        </Text>
+        <Text>{cells}</Text>
       </Box>
     )
   })

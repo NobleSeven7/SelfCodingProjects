@@ -1,6 +1,6 @@
 {
   "name": "usage-gauges",
-  "version": "0.2.0",
-  "description": "Shows Context, 5h and 7d usage as colored pie-wheel gauges in a row above the prompt.",
+  "version": "0.3.0",
+  "description": "Shows Context, 5-hour and weekly usage plus the prompt cache hit rate as colored rings in a row above the prompt.",
   "types": "./types/index.d.ts"
 }
