@@ -35,3 +35,33 @@ claude plugin install usage-gauges --marketplace NobleSeven7/SelfCodingProjects
 ```
 
 In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `NobleSeven7/SelfCodingProjects`, then **Add plugin**.
+
+## Status line (Windows PowerShell)
+
+[`statusline/statusline.ps1`](statusline/statusline.ps1) is a Claude Code status line for the **terminal** (the desktop app doesn't run status line scripts; use the usage-gauges mod there). It shows:
+
+```
+Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h)
+```
+
+- A pie wheel for each: `○` 0%, `◔` 1–25%, `◑` 26–50%, `◕` 51–85%, `●` 86–100%
+- Wheel and percentage colored green under 50%, yellow 50–79%, red 80% and up
+- Time left until the 5-hour and weekly limits reset
+- `○ --%` when a value isn't known yet (a new session, before the first reply)
+
+#### Set up
+
+1. Save `statusline.ps1` into your Claude config folder, `%USERPROFILE%\.claude\` (or the folder `CLAUDE_CONFIG_DIR` points to, if you set it).
+2. Add this to `settings.json` in that same folder, changing the path to where you saved the script:
+
+   ```json
+   "statusLine": {
+     "type": "command",
+     "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\YOU\\.claude\\statusline.ps1\"",
+     "padding": 0
+   }
+   ```
+
+3. Start a new Claude Code session in a terminal.
+
+The script uses Windows PowerShell 5.1, which comes with Windows; nothing else to install.
