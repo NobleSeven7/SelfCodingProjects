@@ -73,3 +73,7 @@ Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (
 3. Start a new Claude Code session in a terminal.
 
 The script uses Windows PowerShell 5.1, which comes with Windows; nothing else to install.
+
+## License
+
+[MIT](LICENSE): use, change and share freely, keeping the copyright notice.
