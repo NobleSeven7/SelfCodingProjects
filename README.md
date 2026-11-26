@@ -13,7 +13,7 @@ A Claude Code mod that shows how much of your limits you've used, in a row above
 - **Context**: how full the context window is (left)
 - **5-Hour**: your 5-hour usage, with time until it resets
 - **Weekly**: your weekly usage, with time until it resets
-- **Cache**: how much of the last reply's input came from the prompt cache, and whether the cache is still `(warm)` or has gone `(cold)` (right)
+- **Cache**: how much of the last reply's input came from the prompt cache, and whether the cache is still warm, with a countdown like `(warm · 54m)`, or has gone `(cold)` (right)
 
 Each one is a progress ring. The usage gauges are green under 50%, yellow from 50% to 79%, and red at 80% or more. Cache is the other way round, since a high hit rate is good: green at 80% or more while warm, yellow from 50% to 79%, red under 50% or when cold. Before the first reply of a session they show `--%`.
 
@@ -50,7 +50,7 @@ In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt 
 [`statusline/statusline.ps1`](statusline/statusline.ps1) is a Claude Code status line for the **terminal** (the desktop app doesn't run status line scripts; use the usage-gauges mod there). It shows:
 
 ```
-Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (warm)
+Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (warm · 54m)
 ```
 
 ![The status line in Windows Terminal, on sample data: Opus 5.5, Ctx 68% in yellow, 5h 18% and 7d 42% in green with reset times, Cache 96% (warm) in green](docs/statusline.png)
@@ -58,7 +58,8 @@ Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (
 - A pie wheel for each: `○` 0%, `◔` 1–25%, `◑` 26–50%, `◕` 51–85%, `●` 86–100%
 - Wheel and percentage colored green under 50%, yellow 50–79%, red 80% and up
 - Time left until the 5-hour and weekly limits reset
-- Prompt cache hit rate with `(warm)` or `(cold)`, colored the other way round since high is good: green at 80%+ and warm, yellow 50–79%, red under 50% or cold. It uses `prompt_cache` when Claude Code sends it, otherwise `cache_read / (cache_read + input + cache_creation)` from `context_window.current_usage`, and calls the cache cold once the transcript hasn't changed for longer than the cache lifetime (5 minutes, or 1 hour)
+- Prompt cache hit rate with `(warm · 54m)` or `(cold)`, colored the other way round since high is good: green at 80%+ and warm, yellow 50–79%, red under 50% or cold. It uses `prompt_cache` when Claude Code sends it, otherwise `cache_read / (cache_read + input + cache_creation)` from `context_window.current_usage`, and calls the cache cold once the transcript hasn't changed for longer than the cache lifetime
+- While the cache is warm, a countdown to when it goes cold, counted from the last change to the transcript. The lifetime is 1 hour or 5 minutes, going by what the last reply's cache writes show; when they show neither, 1 hour on a Claude subscription and 5 minutes with an API key. The countdown moves on whenever Claude Code redraws the status line
 - `○ --%` when a value isn't known yet (a new session, before the first reply)
 
 #### Set up

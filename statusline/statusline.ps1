@@ -1,5 +1,5 @@
 # Claude Code status line
-# Output: Model | wheel Ctx 68% | wheel 5h 18% (2h 14m) | wheel 7d 42% (4d 6h) | wheel Cache 96% (warm)
+# Output: Model | wheel Ctx 68% | wheel 5h 18% (2h 14m) | wheel 7d 42% (4d 6h) | wheel Cache 96% (warm - 54m)
 # Reads the session JSON from stdin. Missing values show as "--%".
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -81,13 +81,36 @@ function Format-Gauge([string]$label, $rawPct, $resetsAt) {
 # context_window.current_usage:
 #   cache_read / (cache_read + input + cache_creation)
 # and calls the cache warm while the transcript was written less than the
-# cache lifetime ago (1 hour if the last reply wrote 1-hour entries, else 5 min).
+# cache lifetime ago. While warm it counts down to when it goes cold, like
+# "(warm - 54m)" (with a middle dot), rounded up so it never reads 0m.
+# Lifetime: 1 hour if the last reply wrote 1-hour entries, 5 minutes if it
+# wrote 5-minute ones; otherwise 1 hour on a Claude subscription (Claude Code
+# only sends rate_limits then) and 5 minutes with an API key.
 # Colors are inverted, since a high hit rate is good:
 #   green 80%+ and warm, yellow 50-79%, red under 50% or cold.
+function Get-CacheTtl($data, $usage) {
+    $oneHour  = (Get-Prop $usage @('cache_creation', 'ephemeral_1h_input_tokens')) -as [double]
+    $fiveMin  = (Get-Prop $usage @('cache_creation', 'ephemeral_5m_input_tokens')) -as [double]
+    if ($oneHour -gt 0) { return 3600 }
+    if ($fiveMin -gt 0) { return 300 }
+    if ($null -ne (Get-Prop $data @('rate_limits'))) { return 3600 }
+    return 300
+}
+
 function Format-Cache($data) {
     $ratio = Get-Prop $data @('prompt_cache', 'hit_ratio')
     $warm  = Get-Prop $data @('prompt_cache', 'warm')
     $pct = $null
+
+    # Seconds until the cache goes cold: the cache lifetime minus how long ago
+    # the transcript was last written. Unknown without a transcript.
+    $left = $null
+    $transcript = Get-Prop $data @('transcript_path')
+    if ($transcript -and (Test-Path -LiteralPath $transcript)) {
+        $ttlSecs = Get-CacheTtl $data (Get-Prop $data @('context_window', 'current_usage'))
+        $age = ((Get-Date) - (Get-Item -LiteralPath $transcript).LastWriteTime).TotalSeconds
+        $left = $ttlSecs - $age
+    }
 
     if ($null -ne $ratio -and $null -ne ($ratio -as [double])) {
         $pct = [int][math]::Floor([math]::Min([double]1.0, [math]::Max([double]0.0, ($ratio -as [double]))) * 100 + 0.5)
@@ -104,12 +127,8 @@ function Format-Cache($data) {
             if ($total -gt 0) { $pct = [int][math]::Floor($read / $total * 100 + 0.5) }
 
             if ($null -eq $warm) {
-                $oneHour = (Get-Prop $usage @('cache_creation', 'ephemeral_1h_input_tokens')) -as [double]
-                $ttlSecs = if ($oneHour -gt 0) { 3600 } else { 300 }
-                $transcript = Get-Prop $data @('transcript_path')
-                if ($transcript -and (Test-Path -LiteralPath $transcript)) {
-                    $age = ((Get-Date) - (Get-Item -LiteralPath $transcript).LastWriteTime).TotalSeconds
-                    $warm = $age -lt $ttlSecs
+                if ($null -ne $left) {
+                    $warm = $left -gt 0
                 } else {
                     $warm = $true
                 }
@@ -130,7 +149,14 @@ function Format-Cache($data) {
     elseif ($pct -lt 80)                  { $color = '33' }   # yellow
     else                                  { $color = '32' }   # green
 
-    $tag = if ($isWarm) { 'warm' } else { 'cold' }
+    $mdot = [string][char]0x00B7   # middle dot
+    if (-not $isWarm) {
+        $tag = 'cold'
+    } elseif ($null -ne $left -and $left -gt 0) {
+        $tag = "warm $mdot $([int][math]::Ceiling($left / 60))m"
+    } else {
+        $tag = 'warm'
+    }
     return "$esc[$($color)m$wheel$reset Cache $esc[$($color)m$pct%$reset ($tag)"
 }
 
