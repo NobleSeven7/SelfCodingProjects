@@ -8,6 +8,8 @@ Just creating things using Claude Code (or any other agents if I get access to t
 
 A Claude Code mod that shows how much of your limits you've used, in a row above the prompt:
 
+![The usage-gauges row above the prompt in the Claude desktop app: Cont. Window 9%, 5-Hour Limit 18%, Week Limit 63%, Prompt Cache 67% (warm), with tools: 0 in the status bar](docs/usage-gauges.png)
+
 - **Cont. Window**: how full the context window is (left)
 - **5-Hour Limit**: your 5-hour usage, with time until it resets
 - **Week Limit**: your weekly usage, with time until it resets
@@ -46,6 +48,8 @@ In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt 
 ```
 Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (warm)
 ```
+
+![The status line in Windows Terminal, on sample data: Opus 5.5, Ctx 68% in yellow, 5h 18% and 7d 42% in green with reset times, Cache 96% (warm) in green](docs/statusline.png)
 
 - A pie wheel for each: `○` 0%, `◔` 1–25%, `◑` 26–50%, `◕` 51–85%, `●` 86–100%
 - Wheel and percentage colored green under 50%, yellow 50–79%, red 80% and up
