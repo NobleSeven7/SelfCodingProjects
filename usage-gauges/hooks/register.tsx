@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, SessionContextUsage, SessionRateLimit, TurnUsage } from 'claude-code'
+import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, TurnUsage } from 'claude-code'
 
 import type { CacheReading, Gauge, Usage } from '../types'
 
@@ -113,19 +113,79 @@ export function isWarm(c: CacheReading, now: number): boolean {
   return now - c.lastAt < c.ttlMs
 }
 
-// Tool-call count for the bottom status bar ("tools: N"). Saved in the mod's
-// store so it keeps counting across sessions and reloads. Loaded once, then
-// kept in memory so tool calls that run at the same time each add exactly 1.
+// Tool-call count for the bottom status bar ("tools: N"), one running total
+// shared by every session and every copy of this mod (a dev copy and one
+// installed from GitHub each get their own $.store, so that can't be used).
+//
+// The total lives in a small JSON file next to the plugins' data folders in
+// the Claude config folder. Each tool call re-reads it, adds 1 and writes it
+// back, so calls made in other sessions are kept too. Calls in this session
+// run one after another through `chain`, so simultaneous calls each add 1.
+// Falls back to this copy's own $.store if the file can't be reached.
 const COUNT_KEY = 'toolCount'
-let countLoaded: Promise<number> | undefined
+
+let countFile: Promise<string | null> | undefined
+let chain: Promise<unknown> = Promise.resolve()
 let toolCalls = 0
 
-function loadCount($: { store: { get: (key: string) => Promise<unknown> } }): Promise<number> {
-  countLoaded ??= $.store.get(COUNT_KEY).then(saved => {
-    toolCalls = Number(saved ?? 0) || 0
+/** The shared count file: beside this copy's own plugin data folder. */
+export function sharedPathFrom(dataDir: string | undefined): string | null {
+  if (!dataDir) return null
+  const parent = dataDir.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]*$/, '')
+  return parent ? `${parent}/usage-gauges-shared/tool-count.json` : null
+}
+
+function sharedFile($: EngineInterface): Promise<string | null> {
+  countFile ??= (async () => {
+    try {
+      const env = await $.process.hookEnv()
+      const data = env.CLAUDE_PLUGIN_DATA
+      if (!data) return null
+      const parent = data.replace(/[\\/]+$/, '').replace(/[\\/][^\\/]*$/, '')
+      return `${parent}/usage-gauges-shared/tool-count.json`
+    } catch {
+      return null
+    }
+  })()
+  return countFile
+}
+
+async function readTotal($: EngineInterface): Promise<number> {
+  const file = await sharedFile($)
+  const own = Number((await $.store.get(COUNT_KEY).catch(() => 0)) ?? 0) || 0
+  if (!file) return own
+  try {
+    const saved = JSON.parse(await $.fs.read(file)) as { count?: unknown }
+    return Number(saved.count ?? 0) || 0
+  } catch {
+    // No shared file yet: start it from this copy's own saved count.
+    return own
+  }
+}
+
+async function writeTotal($: EngineInterface, total: number): Promise<void> {
+  const file = await sharedFile($)
+  if (file) await $.fs.write(file, JSON.stringify({ count: total }) + '\n').catch(() => undefined)
+  await $.store.set(COUNT_KEY, total).catch(() => undefined)
+}
+
+/** Runs `step` after every earlier step of this session has finished. */
+function serial<T>(step: () => Promise<T>): Promise<T> {
+  const run = chain.then(step, step)
+  chain = run.catch(() => undefined)
+  return run
+}
+
+function addToolCall($: EngineInterface): Promise<number> {
+  return serial(async () => {
+    toolCalls = (await readTotal($)) + 1
+    await writeTotal($, toolCalls)
     return toolCalls
   })
-  return countLoaded
+}
+
+function loadCount($: EngineInterface): Promise<number> {
+  return serial(async () => (toolCalls = await readTotal($)))
 }
 
 /** One gauge as the row draws it. */
@@ -140,11 +200,9 @@ type Item = {
 
 export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
-    await loadCount($).catch(() => 0)
-    toolCalls += 1
-    $.ui.status(`tools: ${toolCalls}`)
-    // A failed save never blocks the tool itself.
-    await $.store.set(COUNT_KEY, toolCalls).catch(() => undefined)
+    // A failed count never blocks the tool itself.
+    const total = await addToolCall($).catch(() => toolCalls)
+    $.ui.status(`tools: ${total}`)
     return next(e)
   })
 

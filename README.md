@@ -17,7 +17,7 @@ Each one is a progress ring. The usage gauges are green under 50%, yellow from 5
 
 The cache hit rate is `cache_read / (cache_read + input + cache_creation)` from each reply's token counts. Warm or cold is worked out from the time since the last reply against the cache's lifetime (5 minutes, or 1 hour when it was written that way).
 
-It also puts a running tool-call count (`tools: N`) in the status bar, saved across sessions.
+It also puts a running tool-call count (`tools: N`) in the status bar: one total shared by all your sessions, kept in `plugins/data/usage-gauges-shared/tool-count.json` in your Claude config folder.
 
 In the desktop app the gauges are drawn rings; in the terminal they're text wheels (`○ ◔ ◑ ◕ ●`).
 

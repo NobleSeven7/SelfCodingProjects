@@ -1,6 +1,6 @@
 {
   "name": "usage-gauges",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Shows Context, 5-hour and weekly usage plus the prompt cache hit rate as colored rings in a row above the prompt.",
   "types": "./types/index.d.ts"
 }
