@@ -1,0 +1,11 @@
+{
+  "name": "selfcodingprojects",
+  "owner": { "name": "NobleSeven7" },
+  "plugins": [
+    {
+      "name": "usage-gauges",
+      "source": "./usage-gauges",
+      "description": "Shows Context, 5-hour and weekly usage as colored progress rings in a row above the prompt, plus a tool-call count in the status bar."
+    }
+  ]
+}

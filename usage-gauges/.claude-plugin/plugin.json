@@ -1,0 +1,6 @@
+{
+  "name": "usage-gauges",
+  "version": "0.2.0",
+  "description": "Shows Context, 5h and 7d usage as colored pie-wheel gauges in a row above the prompt.",
+  "types": "./types/index.d.ts"
+}
