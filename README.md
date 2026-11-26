@@ -79,6 +79,37 @@ Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (
 
 The script uses Windows PowerShell 5.1, which comes with Windows; nothing else to install.
 
+## Status line (macOS and Linux)
+
+[`statusline/statusline.sh`](statusline/statusline.sh) is the same status line for macOS and Linux terminals. It shows exactly what the Windows one shows, with the same wheels, colors, reset times and cache countdown:
+
+```
+Model | ◕ Ctx 68% | ◔ 5h 18% (2h 14m) | ◑ 7d 42% (4d 6h) | ● Cache 96% (warm · 54m)
+```
+
+#### Set up
+
+1. Install `jq` if you don't have it (`jq --version` to check): `brew install jq` on macOS, `sudo apt install jq` on Ubuntu or Debian.
+2. Save `statusline.sh` into your Claude config folder, `~/.claude/` (or the folder `CLAUDE_CONFIG_DIR` points to), and make it runnable:
+
+   ```
+   chmod +x ~/.claude/statusline.sh
+   ```
+
+3. Add this to `settings.json` in that same folder:
+
+   ```json
+   "statusLine": {
+     "type": "command",
+     "command": "~/.claude/statusline.sh",
+     "padding": 0
+   }
+   ```
+
+4. Start a new Claude Code session in a terminal.
+
+It works with the bash that comes with macOS (3.2) as well as newer ones.
+
 ## License
 
 [MIT](LICENSE): use, change and share freely, keeping the copyright notice.
