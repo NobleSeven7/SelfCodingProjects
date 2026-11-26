@@ -216,9 +216,12 @@ export const register: Register = on => {
       // Four gauges spread edge to edge: first at the left, last at the right,
       // equal space between, never wrapping onto a second line.
       return (
-        <Box width="100%" flexDirection="row" flexWrap="nowrap" alignItems="center" justifyContent="space-between" columnGap="md">
+        // Tight gaps, and the dim extras (reset times, warm/cold) one size
+        // smaller, so all four fit. On a window too narrow even so, each gauge
+        // may shrink and its text ends in "…" rather than running off the edge.
+        <Box width="100%" flexDirection="row" flexWrap="nowrap" alignItems="center" justifyContent="space-between" columnGap="sm">
           {items.map(it => (
-            <Box key={it.key} flexDirection="row" flexShrink={0} alignItems="center" gap="sm">
+            <Box key={it.key} flexDirection="row" flexShrink={1} minWidth={0} alignItems="center" gap="xs">
               <Svg
                 source={ring(it.percent, it.color)}
                 alt={it.percent === null ? `${it.label} unknown` : `${it.label} ${it.percent}%`}
@@ -226,14 +229,18 @@ export const register: Register = on => {
                 height={RING_PX}
               />
               {it.percent === null ? (
-                <Text dimColor>{`${it.label} --%`}</Text>
+                <Text dimColor wrap="truncate-end">{`${it.label} --%`}</Text>
               ) : (
-                <Text>
+                <Text wrap="truncate-end">
                   {`${it.label} `}
                   <Text color={it.color} bold>
                     {`${it.percent}%`}
                   </Text>
-                  {it.suffix ? <Text dimColor>{it.suffix}</Text> : null}
+                  {it.suffix ? (
+                    <Text dimColor size="footnote">
+                      {it.suffix}
+                    </Text>
+                  ) : null}
                 </Text>
               )}
             </Box>
